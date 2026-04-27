@@ -1,6 +1,9 @@
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { verifyOtpSchema } from "@/types/schemas";
+import { getRedis } from "./redis";
+import { query } from "./db";
+import { isLockedOut, recordFailure, resetLockout } from "./lockout";
 
 const ACCESS_TOKEN_TTL = 15 * 60; // 15 minutes in seconds
 const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60; // 7 days in seconds
@@ -18,8 +21,41 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         const parsed = verifyOtpSchema.safeParse(credentials);
         if (!parsed.success) return null;
-        // TODO: verify OTP from Redis and load user from DB
-        return { id: "placeholder-id", phone: parsed.data.phone, name: "Ajosave User", role: "user" };
+
+        const { phone, otp } = parsed.data;
+
+        // Check for account lockout (brute-force protection)
+        if (await isLockedOut(phone)) {
+          throw new Error("Account locked due to too many failed attempts. Please try again in 30 minutes.");
+        }
+
+        // Verify OTP from Redis
+        const redis = await getRedis();
+        const storedOtp = await redis.get(`otp:${phone}`);
+
+        if (!storedOtp || storedOtp !== otp) {
+          await recordFailure(phone);
+          throw new Error("Invalid or expired OTP. Please try again.");
+        }
+
+        // Reset failure tracking on success
+        await resetLockout(phone);
+        await redis.del(`otp:${phone}`); // OTP is single-use
+
+        // Load user from DB
+        const result = await query<{ id: string; phone: string; name: string; role: string }>(
+          "SELECT id, phone, display_name as name, role FROM users WHERE phone = $1",
+          [phone]
+        );
+        const user = result.rows[0];
+
+        if (!user) {
+          // If user doesn't exist, we might want to auto-register or return null.
+          // For now, return a placeholder to match previous behavior but with verification.
+          return { id: "new-" + phone, phone, name: "Ajosave User", role: "user" };
+        }
+
+        return user;
       },
     }),
   ],
