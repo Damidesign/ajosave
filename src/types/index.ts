@@ -1,4 +1,6 @@
 // ─── User ─────────────────────────────────────────────────────────────────────
+export type NotificationPreference = "sms" | "email" | "both";
+
 export interface User {
   id: string;
   phone: string;
@@ -6,19 +8,22 @@ export interface User {
   email?: string;
   stellarPublicKey?: string;
   reputationScore: number; // 0–100, built from on-time contributions
+  notificationPreference: NotificationPreference;
   createdAt: Date;
 }
 
 // ─── Circle ───────────────────────────────────────────────────────────────────
 export type CircleStatus = "open" | "active" | "completed" | "cancelled";
 export type CycleFrequency = "weekly" | "biweekly" | "monthly";
+export type SupportedCurrency = "NGN" | "GBP" | "USD" | "EUR";
 
 export interface Circle {
   id: string;
   name: string;
   creatorId: string;
   contributionUsdc: string;   // per-member per-cycle amount
-  contributionNgn: number;
+  contributionFiat: number;   // renamed from contributionNgn
+  contributionCurrency: SupportedCurrency;
   maxMembers: number;
   cycleFrequency: CycleFrequency;
   status: CircleStatus;

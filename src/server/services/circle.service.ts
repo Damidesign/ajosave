@@ -2,25 +2,30 @@ import { query, transaction } from "@/lib/db";
 import { randomUUID } from "crypto";
 import type { Circle, Member, CircleStatus } from "@/types";
 import type { CreateCircleInput } from "@/types/schemas";
-
-// Exchange rate — replace with live FX feed in production
-const NGN_PER_USDC = 1600;
-export const ngnToUsdc = (ngn: number) => (ngn / NGN_PER_USDC).toFixed(7);
+import { fiatToUsdc } from "@/lib/currency";
 
 export async function createCircle(
   creatorId: string,
   input: CreateCircleInput
 ): Promise<Circle> {
   const id = randomUUID();
-  const contributionUsdc = ngnToUsdc(input.contributionNgn);
+  const contributionUsdc = fiatToUsdc(input.contributionAmount, input.contributionCurrency);
   const { rows } = await query<Circle>(
     `INSERT INTO circles
-       (id, name, creator_id, contribution_usdc, contribution_ngn,
+       (id, name, creator_id, contribution_usdc, contribution_fiat, contribution_currency,
         max_members, cycle_frequency, status, current_cycle, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,'open',0,NOW(),NOW())
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'open',0,NOW(),NOW())
      RETURNING *`,
-    [id, input.name, creatorId, contributionUsdc, input.contributionNgn,
-     input.maxMembers, input.cycleFrequency]
+    [
+      id,
+      input.name,
+      creatorId,
+      contributionUsdc,
+      input.contributionAmount,
+      input.contributionCurrency,
+      input.maxMembers,
+      input.cycleFrequency,
+    ]
   );
   return rows[0];
 }
