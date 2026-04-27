@@ -1,208 +1,170 @@
-/**
- * Unified notification service
- * Handles SMS and email notifications based on user preferences
- */
-
 import { query } from "@/lib/db";
-import { sendOtp } from "@/lib/sms";
 import {
-  sendWelcomeEmail,
-  sendPayoutReceivedEmail,
-  sendContributionReminderEmail,
-  sendCircleCompletedEmail,
-} from "@/lib/email";
-import type { NotificationPreference } from "@/types";
-
-interface User {
-  id: string;
-  phone: string;
-  email?: string;
-  displayName: string;
-  notificationPreference: NotificationPreference;
-}
+  sendPayoutReminderSms,
+  sendPayoutProcessedSms,
+  sendMissedContributionSms,
+  sendContributionReceivedSms,
+  sendJoinRequestApprovedSms,
+  sendJoinRequestRejectedSms,
+} from "@/lib/sms";
+import type { User } from "@/types";
 
 /**
- * Get user notification preferences
+ * Check if user has SMS notifications enabled
  */
-async function getUserPreferences(userId: string): Promise<User | null> {
+async function canSendSms(userId: string): Promise<boolean> {
   const { rows } = await query<User>(
-    "SELECT id, phone, email, display_name as \"displayName\", notification_preference as \"notificationPreference\" FROM users WHERE id = $1",
+    "SELECT sms_notifications_enabled FROM users WHERE id = $1",
     [userId]
   );
-  return rows[0] ?? null;
+  return rows[0]?.smsNotificationsEnabled ?? false;
 }
 
 /**
- * Send welcome notification to new user
+ * Get user phone number
  */
-export async function sendWelcomeNotification(userId: string): Promise<void> {
-  const user = await getUserPreferences(userId);
-  if (!user) return;
-
-  const tasks: Promise<void>[] = [];
-
-  if (
-    (user.notificationPreference === "email" || user.notificationPreference === "both") &&
-    user.email
-  ) {
-    tasks.push(sendWelcomeEmail(user.email, user.displayName));
-  }
-
-  if (user.notificationPreference === "sms" || user.notificationPreference === "both") {
-    // SMS welcome message via Termii
-    // Note: sendOtp is for OTP, we'd need a generic SMS function
-    // For now, we'll skip SMS welcome or implement a generic sendSms function
-  }
-
-  await Promise.allSettled(tasks);
-}
-
-/**
- * Send payout received notification
- */
-export async function sendPayoutNotification(
-  userId: string,
-  circleName: string,
-  amount: string,
-  currency: string,
-  txHash: string
-): Promise<void> {
-  const user = await getUserPreferences(userId);
-  if (!user) return;
-
-  const tasks: Promise<void>[] = [];
-
-  if (
-    (user.notificationPreference === "email" || user.notificationPreference === "both") &&
-    user.email
-  ) {
-    tasks.push(
-      sendPayoutReceivedEmail(user.email, user.displayName, circleName, amount, currency, txHash)
-    );
-  }
-
-  if (user.notificationPreference === "sms" || user.notificationPreference === "both") {
-    // SMS notification: "You received ${amount} ${currency} from ${circleName}. Tx: ${txHash.slice(0, 8)}..."
-    // Would need generic sendSms function
-  }
-
-  await Promise.allSettled(tasks);
-}
-
-/**
- * Send contribution reminder notification
- */
-export async function sendContributionReminder(
-  userId: string,
-  circleName: string,
-  amount: string,
-  currency: string,
-  dueDate: Date
-): Promise<void> {
-  const user = await getUserPreferences(userId);
-  if (!user) return;
-
-  const tasks: Promise<void>[] = [];
-
-  if (
-    (user.notificationPreference === "email" || user.notificationPreference === "both") &&
-    user.email
-  ) {
-    tasks.push(
-      sendContributionReminderEmail(
-        user.email,
-        user.displayName,
-        circleName,
-        amount,
-        currency,
-        dueDate
-      )
-    );
-  }
-
-  if (user.notificationPreference === "sms" || user.notificationPreference === "both") {
-    // SMS reminder: "Reminder: ${amount} ${currency} contribution due for ${circleName} by ${dueDate}"
-    // Would need generic sendSms function
-  }
-
-  await Promise.allSettled(tasks);
-}
-
-/**
- * Send circle completed notification
- */
-export async function sendCircleCompletedNotification(
-  userId: string,
-  circleName: string
-): Promise<void> {
-  const user = await getUserPreferences(userId);
-  if (!user) return;
-
-  const tasks: Promise<void>[] = [];
-
-  if (
-    (user.notificationPreference === "email" || user.notificationPreference === "both") &&
-    user.email
-  ) {
-    tasks.push(sendCircleCompletedEmail(user.email, user.displayName, circleName));
-  }
-
-  if (user.notificationPreference === "sms" || user.notificationPreference === "both") {
-    // SMS: "Circle ${circleName} completed! Your reputation has been updated."
-    // Would need generic sendSms function
-  }
-
-  await Promise.allSettled(tasks);
-}
-
-/**
- * Send notifications to all members of a circle
- */
-export async function notifyCircleMembers(
-  circleId: string,
-  notificationType: "payout" | "reminder" | "completed",
-  data: {
-    circleName: string;
-    amount?: string;
-    currency?: string;
-    txHash?: string;
-    dueDate?: Date;
-  }
-): Promise<void> {
-  const { rows: members } = await query<{ user_id: string }>(
-    "SELECT user_id FROM members WHERE circle_id = $1",
-    [circleId]
+async function getUserPhone(userId: string): Promise<string | null> {
+  const { rows } = await query<User>(
+    "SELECT phone FROM users WHERE id = $1",
+    [userId]
   );
+  return rows[0]?.phone ?? null;
+}
 
-  const tasks = members.map(async (member) => {
-    switch (notificationType) {
-      case "payout":
-        if (data.amount && data.currency && data.txHash) {
-          await sendPayoutNotification(
-            member.user_id,
-            data.circleName,
-            data.amount,
-            data.currency,
-            data.txHash
-          );
-        }
-        break;
-      case "reminder":
-        if (data.amount && data.currency && data.dueDate) {
-          await sendContributionReminder(
-            member.user_id,
-            data.circleName,
-            data.amount,
-            data.currency,
-            data.dueDate
-          );
-        }
-        break;
-      case "completed":
-        await sendCircleCompletedNotification(member.user_id, data.circleName);
-        break;
+/**
+ * Send payout reminder 24 hours before payout
+ */
+export async function notifyPayoutReminder(
+  userId: string,
+  circleName: string,
+  amount: string,
+  hoursUntilPayout: number = 24
+): Promise<void> {
+  if (!(await canSendSms(userId))) return;
+  
+  const phone = await getUserPhone(userId);
+  if (!phone) return;
+
+  try {
+    await sendPayoutReminderSms(phone, circleName, amount, hoursUntilPayout);
+  } catch (error) {
+    console.error(`Failed to send payout reminder to ${userId}:`, error);
+  }
+}
+
+/**
+ * Notify all circle members when a payout is processed
+ */
+export async function notifyPayoutProcessed(
+  memberUserIds: string[],
+  circleName: string,
+  amount: string,
+  recipientName: string
+): Promise<void> {
+  const notifications = memberUserIds.map(async (userId) => {
+    if (!(await canSendSms(userId))) return;
+    
+    const phone = await getUserPhone(userId);
+    if (!phone) return;
+
+    try {
+      await sendPayoutProcessedSms(phone, circleName, amount, recipientName);
+    } catch (error) {
+      console.error(`Failed to send payout notification to ${userId}:`, error);
     }
   });
 
-  await Promise.allSettled(tasks);
+  await Promise.allSettled(notifications);
+}
+
+/**
+ * Notify member when they miss a contribution
+ */
+export async function notifyMissedContribution(
+  userId: string,
+  circleName: string,
+  amount: string
+): Promise<void> {
+  if (!(await canSendSms(userId))) return;
+  
+  const phone = await getUserPhone(userId);
+  if (!phone) return;
+
+  try {
+    await sendMissedContributionSms(phone, circleName, amount);
+  } catch (error) {
+    console.error(`Failed to send missed contribution notification to ${userId}:`, error);
+  }
+}
+
+/**
+ * Notify member when their contribution is confirmed
+ */
+export async function notifyContributionReceived(
+  userId: string,
+  circleName: string,
+  amount: string,
+  cycleNumber: number
+): Promise<void> {
+  if (!(await canSendSms(userId))) return;
+  
+  const phone = await getUserPhone(userId);
+  if (!phone) return;
+
+  try {
+    await sendContributionReceivedSms(phone, circleName, amount, cycleNumber);
+  } catch (error) {
+    console.error(`Failed to send contribution confirmation to ${userId}:`, error);
+  }
+}
+
+/**
+ * Notify member when their join request is approved
+ */
+export async function notifyJoinRequestApproved(
+  userId: string,
+  circleName: string
+): Promise<void> {
+  if (!(await canSendSms(userId))) return;
+  
+  const phone = await getUserPhone(userId);
+  if (!phone) return;
+
+  try {
+    await sendJoinRequestApprovedSms(phone, circleName);
+  } catch (error) {
+    console.error(`Failed to send join approval notification to ${userId}:`, error);
+  }
+}
+
+/**
+ * Notify member when their join request is rejected
+ */
+export async function notifyJoinRequestRejected(
+  userId: string,
+  circleName: string
+): Promise<void> {
+  if (!(await canSendSms(userId))) return;
+  
+  const phone = await getUserPhone(userId);
+  if (!phone) return;
+
+  try {
+    await sendJoinRequestRejectedSms(phone, circleName);
+  } catch (error) {
+    console.error(`Failed to send join rejection notification to ${userId}:`, error);
+  }
+}
+
+/**
+ * Toggle SMS notifications for a user
+ */
+export async function toggleSmsNotifications(
+  userId: string,
+  enabled: boolean
+): Promise<void> {
+  await query(
+    "UPDATE users SET sms_notifications_enabled = $1 WHERE id = $2",
+    [enabled, userId]
+  );
 }
