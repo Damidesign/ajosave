@@ -1,26 +1,59 @@
 "use client";
 
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createCircleSchema, type CreateCircleInput } from "@/types/schemas";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./CreateCircleForm.module.css";
+
+function useUsdcPreview(ngnAmount: number | undefined) {
+  const [usdc, setUsdc] = useState<number | null>(null);
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null);
+  const rateRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!rateRef.current) {
+      fetch("/api/fx/rate")
+        .then((r) => r.json())
+        .then((json) => {
+          if (json.success) {
+            rateRef.current = json.data.ngnPerUsdc;
+            setFetchedAt(json.data.fetchedAt);
+          }
+        })
+        .catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    if (rateRef.current && ngnAmount && ngnAmount > 0) {
+      setUsdc(ngnAmount / rateRef.current);
+    } else {
+      setUsdc(null);
+    }
+  }, [ngnAmount]);
+
+  return { usdc, fetchedAt };
+}
 
 export function CreateCircleForm() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { register, handleSubmit, formState: { errors } } = useForm<CreateCircleInput>({
+  const { register, handleSubmit, control, formState: { errors } } = useForm<CreateCircleInput>({
     resolver: zodResolver(createCircleSchema),
     defaultValues: { 
       cycleFrequency: "monthly",
       circleType: "public"
     },
   });
+
+  const ngnAmount = useWatch({ control, name: "contributionNgn" });
+  const { usdc, fetchedAt } = useUsdcPreview(ngnAmount);
 
   const onSubmit = async (data: CreateCircleInput) => {
     setLoading(true);
@@ -51,6 +84,17 @@ export function CreateCircleForm() {
       <Input label="Contribution Amount (₦)" type="number" placeholder="10000"
         error={errors.contributionNgn?.message}
         {...register("contributionNgn", { valueAsNumber: true })} />
+
+      {usdc !== null && (
+        <p className={styles.usdcPreview}>
+          ≈ <strong>{usdc.toFixed(2)} USDC</strong>
+          {fetchedAt && (
+            <span className={styles.rateSource}>
+              {" "}· Rate from open.er-api.com · {new Date(fetchedAt).toLocaleTimeString()}
+            </span>
+          )}
+        </p>
+      )}
 
       <Input label="Number of Members" type="number" placeholder="5" min={2} max={20}
         error={errors.maxMembers?.message}
