@@ -6,6 +6,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { SessionProvider } from "next-auth/react";
 import { SentryUserContext } from "@/components/SentryUserContext";
+import { PWAProvider } from "@/components/PWAProvider";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -32,6 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Navbar />
           <main>{children}</main>
           <Footer />
+          <PWAProvider />
         </SessionProvider>
       </body>
     </html>
