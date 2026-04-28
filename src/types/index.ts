@@ -81,6 +81,23 @@ export interface Payout {
   paidAt: Date;
 }
 
+// ─── Dispute ──────────────────────────────────────────────────────────────────
+export type DisputeStatus = "open" | "resolved" | "rejected";
+
+export interface Dispute {
+  id: string;
+  contributionId: string;
+  memberId: string;
+  circleId: string;
+  paystackReference?: string;
+  reason: string;
+  status: DisputeStatus;
+  resolutionNotes?: string;
+  resolvedBy?: string;
+  createdAt: Date;
+  resolvedAt?: Date;
+}
+
 // ─── API ──────────────────────────────────────────────────────────────────────
 export interface ApiSuccess<T> {
   success: true;
