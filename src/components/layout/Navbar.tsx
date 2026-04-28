@@ -18,7 +18,10 @@ export async function Navbar() {
           <li><Link href="/circles" className={styles.link}>Browse Circles</Link></li>
           <li><Link href="/dashboard" className={styles.link}>Dashboard</Link></li>
           {isAdmin && <li><Link href="/admin" className={styles.link}>Admin</Link></li>}
-          <li><Link href="/auth/login" className="btn btn--primary btn--sm">Sign In</Link></li>
+          {session?.user
+            ? <li><Link href="/profile" className={styles.link}>Profile</Link></li>
+            : <li><Link href="/auth/login" className="btn btn--primary btn--sm">Sign In</Link></li>
+          }
         </ul>
       </nav>
     </header>
