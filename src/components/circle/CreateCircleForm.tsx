@@ -50,13 +50,13 @@ function useUsdcPreview(amount: number | undefined, currency: string) {
 
 export function CreateCircleForm() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
 
-  const { register, handleSubmit, control, reset, formState: { errors } } = useForm<CreateCircleInput>({
+  const { register, handleSubmit, control, reset, formState: { errors, isSubmitting } } = useForm<CreateCircleInput>({
     resolver: zodResolver(createCircleSchema),
     defaultValues: FORM_DEFAULTS,
+    mode: "onBlur",
   });
 
   const handleTemplateSelect = (template: CircleTemplate | null) => {
@@ -74,7 +74,6 @@ export function CreateCircleForm() {
   const { usdc, fetchedAt } = useUsdcPreview(contributionAmount, contributionCurrency);
 
   const onSubmit = async (data: CreateCircleInput) => {
-    setLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/circles", {
@@ -87,8 +86,6 @@ export function CreateCircleForm() {
       router.push(`/circles/${json.data.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -146,6 +143,7 @@ export function CreateCircleForm() {
           <option value="biweekly">Bi-weekly</option>
           <option value="monthly">Monthly</option>
         </select>
+        {errors.cycleFrequency && <p className={styles.fieldError}>{errors.cycleFrequency.message}</p>}
       </div>
 
       <div className="input-group">
@@ -157,11 +155,12 @@ export function CreateCircleForm() {
         <small className="input-hint">
           Private circles require you to approve each join request
         </small>
+        {errors.circleType && <p className={styles.fieldError}>{errors.circleType.message}</p>}
       </div>
 
       {error && <p className={styles.error}>{error}</p>}
 
-      <Button type="submit" fullWidth loading={loading}>Create Circle</Button>
+      <Button type="submit" fullWidth loading={isSubmitting} disabled={isSubmitting}>Create Circle</Button>
     </form>
   );
 }
