@@ -54,16 +54,17 @@ export async function sendPayoutReminders(): Promise<void> {
 }
 
 /**
- * Mark missed contributions and notify members
- * This should be called by a cron job daily
+ * Mark missed contributions and notify members after the grace period.
+ * Grace period is configurable per circle (grace_period_hours after next_payout_at).
+ * This should be called by a cron job daily.
  */
 export async function processMissedContributions(): Promise<void> {
-  // Find active circles where the cycle has passed but not all contributions are confirmed
-  const { rows: circles } = await query<Circle>(
-    `SELECT * FROM circles 
+  // Find active circles where the grace period has elapsed
+  const { rows: circles } = await query<Circle & { gracePeriodHours: number }>(
+    `SELECT *, grace_period_hours as "gracePeriodHours" FROM circles 
      WHERE status = 'active' 
      AND next_payout_at IS NOT NULL
-     AND next_payout_at < NOW()`
+     AND next_payout_at + (grace_period_hours * INTERVAL '1 hour') < NOW()`
   );
 
   for (const circle of circles) {
@@ -82,9 +83,11 @@ export async function processMissedContributions(): Promise<void> {
           [circle.id, memberId, circle.currentCycle, circle.contributionUsdc]
         );
 
-        // Decrement user's reputation score for missed contribution
-        const { decrementReputationOnMissedContribution } = await import("./reputation.service");
-        await decrementReputationOnMissedContribution(userId);
+        // Decrement reputation score (floor at 0)
+        await query(
+          `UPDATE users SET reputation_score = GREATEST(0, reputation_score - 10) WHERE id = $1`,
+          [userId]
+        );
 
         // Send notification
         await notifyMissedContribution(userId, circle.name, circle.contributionUsdc);
