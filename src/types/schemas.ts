@@ -12,6 +12,7 @@ export const createCircleSchema = z.object({
   maxMembers: z.number().int().min(2, "Minimum 2 members").max(20, "Maximum 20 members"),
   cycleFrequency: z.enum(["weekly", "biweekly", "monthly"]),
   circleType: z.enum(["public", "private"]).default("public"),
+  gracePeriodHours: z.number().int().min(0).max(168).default(24),
   payoutMethod: z.enum(["fixed", "randomized"]).default("fixed"),
 });
 

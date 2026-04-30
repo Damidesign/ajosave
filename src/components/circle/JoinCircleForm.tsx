@@ -20,8 +20,20 @@ export function JoinCircleForm({ circle, token, inviteValid }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stellarPublicKey, setStellarPublicKey] = useState("");
+  const [optimisticCount, setOptimisticCount] = useState(circle.memberCount ?? 0);
 
   const { connectionState, publicKey, error: walletError, connect, disconnect } = useFreighterWallet();
+
+  useEffect(() => {
+    // Check if user has a saved Stellar key; show warning if not
+    fetch("/api/v1/profile")
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success && !json.data.stellarPublicKey) setNoSavedKey(true);
+        if (json.success && json.data.stellarPublicKey) setStellarPublicKey(json.data.stellarPublicKey);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (publicKey !== null) {
@@ -42,6 +54,9 @@ export function JoinCircleForm({ circle, token, inviteValid }: Props) {
     setLoading(true);
     setError(null);
 
+    // Optimistic update: increment member count immediately
+    setOptimisticCount((c) => c + 1);
+
     try {
       const res = await fetch(`/api/circles/${circle.id}/join`, {
         method: "POST",
@@ -58,6 +73,8 @@ export function JoinCircleForm({ circle, token, inviteValid }: Props) {
       router.push(`/circles/${circle.id}?joined=true`);
       router.refresh();
     } catch (err) {
+      // Revert optimistic update on error
+      setOptimisticCount((c) => c - 1);
       setError(err instanceof Error ? err.message : "Failed to join circle");
     } finally {
       setLoading(false);
@@ -66,6 +83,11 @@ export function JoinCircleForm({ circle, token, inviteValid }: Props) {
 
   return (
     <div className="card">
+      {noSavedKey && (
+        <div role="alert" style={{ background: "rgba(234,179,8,0.1)", border: "1px solid rgba(234,179,8,0.4)", borderRadius: "var(--radius-md)", padding: "var(--space-3) var(--space-4)", marginBottom: "var(--space-4)", fontSize: "0.875rem", color: "var(--color-warning)" }}>
+          ⚠️ You have no Stellar public key saved. Payouts will be sent to the key you enter below. <a href="/profile" style={{ textDecoration: "underline" }}>Save it in your profile</a> to avoid re-entering it each time.
+        </div>
+      )}
       <div className={styles.info}>
         <p>You are joining <strong>{circle.name}</strong>.</p>
         <div className={styles.stats}>
@@ -79,6 +101,10 @@ export function JoinCircleForm({ circle, token, inviteValid }: Props) {
           <div className={styles.stat}>
             <span className={styles.statLabel}>Frequency</span>
             <span className={styles.statValue}>{circle.cycleFrequency}</span>
+          </div>
+          <div className={styles.stat}>
+            <span className={styles.statLabel}>Members</span>
+            <span className={styles.statValue}>{optimisticCount} / {circle.maxMembers}</span>
           </div>
         </div>
       </div>
@@ -124,7 +150,11 @@ export function JoinCircleForm({ circle, token, inviteValid }: Props) {
           )}
         </div>
 
-        {error && <div className={styles.error}>{error}</div>}
+        {error && (
+          <div role="alert" className={styles.toast}>
+            {error}
+          </div>
+        )}
 
         <Button
           type="submit"
