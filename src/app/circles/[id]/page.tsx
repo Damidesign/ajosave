@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { getCircleById, getMembersByCircle } from "@/server/services/circle.service";
 import { CircleStatusBadge } from "@/components/ui/CircleStatusBadge";
 import { MemberPayoutList } from "@/components/circle/MemberPayoutList";
+import { ContributeButton } from "@/components/circle/ContributeButton";
 import { format } from "date-fns";
 import type { Metadata } from "next";
 import styles from "./page.module.css";
@@ -37,6 +38,15 @@ export default async function CircleDetailPage({ params }: Props) {
             <h1 className={styles.title}>{circle.name}</h1>
             <CircleStatusBadge status={circle.status} />
           </div>
+          {circle.status === "active" && userId && !isCreator && (
+            <ContributeButton
+              circleId={circle.id}
+              circleName={circle.name}
+              amountNgn={circle.contributionNgn}
+              cycleFrequency={circle.cycleFrequency}
+              currentCycle={circle.currentCycle}
+            />
+          )}
         </div>
 
         <div className={styles.grid}>
