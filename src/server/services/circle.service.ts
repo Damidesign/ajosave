@@ -39,7 +39,7 @@ export async function createCircle(
 
 export async function getCircleById(id: string): Promise<Circle | null> {
   const { rows } = await query<Circle>(
-    "SELECT * FROM circles WHERE id = $1",
+    "SELECT * FROM circles WHERE id = $1 AND deleted_at IS NULL",
     [id]
   );
   return rows[0] ?? null;
@@ -59,11 +59,11 @@ export async function listOpenCircles(page = 1, limit = 20): Promise<PaginatedCi
 
   const [{ rows }, { rows: countRows }] = await Promise.all([
     query<Circle>(
-      "SELECT * FROM circles WHERE status = 'open' ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+      "SELECT * FROM circles WHERE status = 'open' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $1 OFFSET $2",
       [safeLimit, offset]
     ),
     query<{ count: string }>(
-      "SELECT COUNT(*) FROM circles WHERE status = 'open'"
+      "SELECT COUNT(*) FROM circles WHERE status = 'open' AND deleted_at IS NULL"
     ),
   ]);
 
@@ -74,7 +74,7 @@ export async function getCirclesByUser(userId: string): Promise<Circle[]> {
   const { rows } = await query<Circle>(
     `SELECT DISTINCT c.* FROM circles c
      LEFT JOIN members m ON m.circle_id = c.id
-     WHERE c.creator_id = $1 OR m.user_id = $1
+     WHERE (c.creator_id = $1 OR m.user_id = $1) AND c.deleted_at IS NULL
      ORDER BY c.created_at DESC`,
     [userId]
   );
@@ -313,6 +313,34 @@ export async function getPendingJoinRequests(circleId: string): Promise<Member[]
     [circleId]
   );
   return rows;
+}
+
+/**
+ * Soft-delete a circle by setting deleted_at. Only the creator can delete.
+ * Only circles with status 'open' or 'cancelled' can be deleted.
+ */
+export async function softDeleteCircle(
+  circleId: string,
+  requesterId: string
+): Promise<Circle> {
+  return transaction(async (q) => {
+    const { rows: circleRows } = await q<Circle>(
+      "SELECT * FROM circles WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
+      [circleId]
+    );
+    const circle = circleRows[0];
+    if (!circle) throw new Error("Circle not found");
+    if (circle.creatorId !== requesterId) throw new Error("Only the creator can delete a circle");
+    if (!["open", "cancelled"].includes(circle.status)) {
+      throw new Error("Only open or cancelled circles can be deleted");
+    }
+
+    const { rows: updated } = await q<Circle>(
+      "UPDATE circles SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 RETURNING *",
+      [circleId]
+    );
+    return updated[0];
+  });
 }
 
 /**
