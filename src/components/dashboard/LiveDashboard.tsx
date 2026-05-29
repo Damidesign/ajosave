@@ -53,7 +53,7 @@ export function LiveDashboard({ initialCircles }: LiveDashboardProps) {
       </div>
 
       {newCirclesCount > 0 && (
-        <div className={styles.newItemsBanner}>
+        <div className={styles.newItemsBanner} role="status" aria-live="polite">
           🎉 {newCirclesCount} new circle{newCirclesCount !== 1 ? "s" : ""} available!
         </div>
       )}

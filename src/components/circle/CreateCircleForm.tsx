@@ -76,7 +76,7 @@ export function CreateCircleForm() {
         </small>
       </div>
 
-      {error && <p className={styles.error}>{error}</p>}
+      {error && <p className={styles.error} role="alert">{error}</p>}
 
       <Button type="submit" fullWidth loading={loading}>Create Circle</Button>
     </form>
