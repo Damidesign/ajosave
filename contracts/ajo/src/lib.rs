@@ -21,6 +21,11 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, token, vec, Address, BytesN, Env, Symbol, Vec,
 };
 
+// ─── Schema version ───────────────────────────────────────────────────────────
+/// Bump this constant whenever the storage layout changes in a new deployment.
+/// `migrate()` uses it to gate and sequence migration logic.
+const STORAGE_VERSION: u32 = 1;
+
 // ─── TTL Configuration ────────────────────────────────────────────────────────
 // Threshold: approximately 1 day in ledgers (assuming ~5s per ledger)
 const DAY_IN_LEDGERS: u32 = 17280;
@@ -63,6 +68,8 @@ pub enum DataKey {
     TtlExtendTo,
     // Reentrancy guard (issue #264)
     PayoutLock,
+    // Schema versioning — bumped whenever storage layout changes
+    StorageVersion,
 }
 
 // ─── Contract ─────────────────────────────────────────────────────────────────
@@ -554,6 +561,67 @@ impl AjoContract {
             .unwrap_or(0);
 
         (reputation, circles_completed, on_time, total)
+    }
+
+    /// Migrate storage layout after a contract upgrade.
+    ///
+    /// Call this **once** immediately after `upgrade()` when the new WASM
+    /// introduces storage layout changes. It is a no-op if the stored version
+    /// already matches `STORAGE_VERSION`, making it safe to call idempotently.
+    ///
+    /// ## Adding a new migration
+    /// 1. Bump `STORAGE_VERSION` at the top of this file.
+    /// 2. Add a new `if from < N { … }` block below that transforms the old
+    ///    keys/values into the new layout.
+    /// 3. Do **not** remove earlier blocks — they allow contracts that skipped
+    ///    intermediate versions to catch up in a single call.
+    ///
+    /// Requires M-of-N admin approval (same as `upgrade`).
+    pub fn migrate(env: Env, caller: Address, op_hash: BytesN<32>) {
+        caller.require_auth();
+        Self::assert_is_signer(&env, &caller);
+        Self::assert_approved(&env, &op_hash);
+
+        let from: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::StorageVersion)
+            .unwrap_or(0);
+
+        if from >= STORAGE_VERSION {
+            // Already up-to-date; nothing to do.
+            return;
+        }
+
+        // ── v0 → v1 ──────────────────────────────────────────────────────────
+        // Version 1 introduced the PayoutLock flag and the StorageVersion key
+        // itself. No data shape changes — just ensure the lock is initialised
+        // to false so the payout guard works correctly on upgraded contracts
+        // that never set it.
+        if from < 1 {
+            let locked: bool = env
+                .storage()
+                .instance()
+                .get(&DataKey::PayoutLock)
+                .unwrap_or(false);
+            if !locked {
+                env.storage().instance().set(&DataKey::PayoutLock, &false);
+            }
+        }
+
+        // ── Add future migration blocks here ─────────────────────────────────
+        // if from < 2 { … }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::StorageVersion, &STORAGE_VERSION);
+
+        Self::clear_approvals(&env, &op_hash);
+
+        env.events().publish(
+            (Symbol::new(&env, "migrated"),),
+            (from, STORAGE_VERSION),
+        );
     }
 
     /// Upgrade contract WASM. Requires M-of-N approvals.
