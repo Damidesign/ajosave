@@ -45,6 +45,11 @@ export async function processCyclePayout(
     if (circle.contractId) {
       // Soroban path: contract handles transfer, backend only triggers payout()
       txHash = await invokeContractPayout(circle.contractId);
+      // Track fee sponsorship cost per circle (BASE_FEE = 100 stroops = 0.00001 XLM)
+      await query(
+        "UPDATE circles SET fee_bumps_usdc = fee_bumps_usdc + 0.00001 WHERE id = $1",
+        [circleId]
+      );
     } else {
       // Horizon fallback: validate key, account existence, and USDC trustline first
       await validateStellarRecipient(recipientStellarKey);
