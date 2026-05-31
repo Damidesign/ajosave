@@ -6,21 +6,16 @@ import { useRouter } from "next/navigation";
 import styles from "./page.module.css";
 import type { ProfileData } from "@/app/api/v1/profile/route";
 import type { ReferralData } from "@/app/api/referral/route";
-import { useFreighterWallet } from "@/hooks/useFreighterWallet";
-import { ConnectWalletButton } from "@/components/wallet/ConnectWalletButton";
 
 export default function ProfilePage() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const router = useRouter();
 
-  const { connectionState, publicKey, error: walletError, connect, disconnect } = useFreighterWallet();
-
   const [profile, setProfile] = useState<ProfileData | null>(null);
-  const [form, setForm] = useState({ displayName: "", email: "", stellarPublicKey: "" });
+  const [form, setForm] = useState({ displayName: "" });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [referral, setReferral] = useState<ReferralData | null>(null);
-  const [stellarKeyError, setStellarKeyError] = useState<string | null>(null);
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
   const [hasUsdcTrustline, setHasUsdcTrustline] = useState<boolean | null>(null);
   const [referralCode, setReferralCode] = useState("");
@@ -39,25 +34,13 @@ export default function ProfilePage() {
       .then((json) => {
         if (json.success) {
           setProfile(json.data);
-          setForm({
-            displayName: json.data.displayName ?? "",
-            email: json.data.email ?? "",
-            stellarPublicKey: json.data.stellarPublicKey ?? "",
-          });
+          setForm({ displayName: json.data.displayName ?? "" });
         }
       });
     fetch("/api/referral")
       .then((r) => r.json())
       .then((json) => { if (json.success) setReferral(json.data); });
   }, [status]);
-
-  // Sync Freighter wallet public key into the form field
-  useEffect(() => {
-    if (publicKey) {
-      setForm((f) => ({ ...f, stellarPublicKey: publicKey }));
-      setStellarKeyError(null);
-    }
-  }, [publicKey]);
 
   // Fetch USDC balance whenever the saved key changes
   useEffect(() => {
@@ -106,24 +89,18 @@ export default function ProfilePage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Client-side Stellar key validation
-    if (form.stellarPublicKey && !/^G[A-Z2-7]{55}$/.test(form.stellarPublicKey)) {
-      setStellarKeyError("Invalid Stellar public key format (must start with G and be 56 characters)");
-      return;
-    }
-    setStellarKeyError(null);
     setSaving(true);
     setMessage(null);
     try {
-      const res = await fetch("/api/v1/profile", {
+      const res = await fetch("/api/users/me", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ displayName: form.displayName }),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       setMessage({ type: "success", text: "Profile updated." });
-      setProfile((p) => p && { ...p, ...form });
+      setProfile((p) => p && { ...p, displayName: form.displayName });
     } catch (err) {
       setMessage({ type: "error", text: err instanceof Error ? err.message : "Save failed." });
     } finally {
@@ -262,74 +239,41 @@ export default function ProfilePage() {
               <input id="phone" className="input" value={profile.phone} disabled aria-disabled="true" />
             </div>
             <div className="input-group">
-              <label className="input-label" htmlFor="displayName">Display Name</label>
+              <label className="input-label" htmlFor="displayName">
+                Display Name
+                <span className={styles.charCount} aria-live="polite">
+                  {form.displayName.length}/50
+                </span>
+              </label>
               <input
                 id="displayName"
                 className="input"
                 value={form.displayName}
                 onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))}
-                maxLength={80}
+                maxLength={50}
                 placeholder="Your name"
+                required
               />
             </div>
             <div className="input-group">
-              <label className="input-label" htmlFor="email">Email</label>
+              <label className="input-label" htmlFor="stellarAddress">Stellar Address</label>
               <input
-                id="email"
-                type="email"
+                id="stellarAddress"
                 className="input"
-                value={form.email}
-                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                placeholder="you@example.com"
-              />
-            </div>
-            <div className="input-group">
-              <label className="input-label" htmlFor="stellarPublicKey">Stellar Public Key</label>
-              <input
-                id="stellarPublicKey"
-                className="input"
-                value={form.stellarPublicKey}
-                onChange={(e) => {
-                  setForm((f) => ({ ...f, stellarPublicKey: e.target.value }));
-                  setStellarKeyError(null);
-                }}
-                placeholder="GXXXXXXX…"
+                value={profile.stellarPublicKey ?? "Not set"}
+                disabled
+                aria-disabled="true"
+                aria-label="Stellar address (read-only)"
                 spellCheck={false}
               />
-              {connectionState !== "not_installed" && (
-                <ConnectWalletButton
-                  connectionState={connectionState}
-                  onConnect={connect}
-                  onDisconnect={disconnect}
-                  publicKey={publicKey}
-                />
-              )}
-              {connectionState === "not_installed" && (
-                <small className="input-hint">
-                  Don&apos;t have a Stellar wallet?{" "}
-                  <a href="https://freighter.app" target="_blank" rel="noopener noreferrer">
-                    Install Freighter
-                  </a>
-                </small>
-              )}
-              {stellarKeyError && (
-                <p role="alert" style={{ color: "var(--color-error)", fontSize: "0.875rem", marginTop: "0.25rem" }}>
-                  {stellarKeyError}
-                </p>
-              )}
-              {walletError && (
-                <p role="alert" style={{ color: "var(--color-error)", fontSize: "0.875rem", marginTop: "0.25rem" }}>
-                  {walletError}
-                </p>
-              )}
-              {profile?.stellarPublicKey && usdcBalance !== null && (
+              {profile.stellarPublicKey && usdcBalance !== null && (
                 <p style={{ color: "var(--color-success)", fontSize: "0.875rem", marginTop: "0.5rem" }}>
-                  Current USDC balance: <strong>{parseFloat(usdcBalance).toFixed(2)} USDC</strong>
+                  USDC balance: <strong>{parseFloat(usdcBalance).toFixed(2)} USDC</strong>
                 </p>
               )}
-              {profile?.stellarPublicKey && hasUsdcTrustline === false && (
+              {profile.stellarPublicKey && hasUsdcTrustline === false && (
                 <div role="alert" style={{ background: "rgba(239, 68, 68, 0.1)", border: "1px solid var(--color-error)", borderRadius: "var(--radius-md)", padding: "var(--space-3) var(--space-4)", marginTop: "0.5rem", fontSize: "0.875rem", color: "var(--color-error)" }}>
-                  ⚠️ <strong>Missing USDC Trustline:</strong> Your Stellar account does not have a USDC trustline. Payouts sent to this account will fail. Please add a USDC trustline using your wallet (e.g. Freighter) or funding source.
+                  ⚠️ <strong>Missing USDC Trustline:</strong> Your Stellar account does not have a USDC trustline. Payouts will fail. Please add a USDC trustline via your wallet.
                 </div>
               )}
             </div>
