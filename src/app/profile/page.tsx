@@ -27,6 +27,9 @@ export default function ProfilePage() {
   const [referralMsg, setReferralMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [applyingCode, setApplyingCode] = useState(false);
   const [copied, setCopied] = useState(false);
+  type Cert = { circleId: string; circleName: string; cyclesCompleted: number; totalSavedUsdc: string; txHash: string; issuedAt: string };
+  const [certificates, setCertificates] = useState<Cert[]>([]);
+  const [certificates, setCertificates] = useState<import("@/server/services/certificate.service").Certificate[]>([]);
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/auth/login");
@@ -49,6 +52,10 @@ export default function ProfilePage() {
     fetch("/api/referral")
       .then((r) => r.json())
       .then((json) => { if (json.success) setReferral(json.data); });
+    fetch("/api/v1/users/me/certificates")
+      .then((r) => r.json())
+      .then((json) => { if (json.success) setCertificates(json.data); })
+      .catch(() => {});
   }, [status]);
 
   // Sync Freighter wallet public key into the form field
@@ -252,6 +259,29 @@ export default function ProfilePage() {
             <div className={`${styles.referralCode} skeleton`} style={{ height: "2rem", width: "8rem" }} />
           )}
         </section>
+
+        {/* ── Completion Certificates ── */}
+        {certificates.length > 0 && (
+          <section className="card" style={{ marginBottom: "var(--space-6)" }}>
+            <h2 className={styles.sectionTitle}>Completion Certificates</h2>
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+              {certificates.map((cert) => (
+                <div key={cert.circleId} style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "var(--space-4)" }}>
+                  <div style={{ fontWeight: 600 }}>🏅 {cert.circleName}</div>
+                  <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-secondary)", marginTop: "var(--space-1)" }}>
+                    {cert.cyclesCompleted} cycles · {parseFloat(cert.totalSavedUsdc).toFixed(2)} USDC saved
+                  </div>
+                  <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)", marginTop: "var(--space-1)" }}>
+                    Issued {new Date(cert.issuedAt).toLocaleDateString()}
+                    {cert.txHash && (
+                      <> · <a href={`https://stellar.expert/explorer/testnet/tx/${cert.txHash}`} target="_blank" rel="noopener noreferrer">View on-chain</a></>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* ── Editable fields ── */}
         <section className="card">
