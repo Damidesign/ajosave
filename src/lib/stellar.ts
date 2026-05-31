@@ -79,28 +79,71 @@ function isRetryable(err: any): boolean {
  * Issue #19: retries up to 3 times with exponential backoff on transient errors.
  * Issue #20: `loadAccount` is called inside the retry loop so each attempt uses
  *            a fresh sequence number — preventing tx_bad_seq on concurrent payouts.
+ * Issue #141: if the server account has insufficient USDC, falls back to
+ *             pathPaymentStrictSend (XLM → USDC via DEX) with configurable slippage.
  */
 export async function sendUsdcPayment(destination: string, amount: string): Promise<string> {
   const keypair = Keypair.fromSecret(serverConfig.stellar.serverSecretKey);
   const MAX_ATTEMPTS = 4; // Initial attempt + 3 retries
+  const slippage = serverConfig.usdc.slippageTolerancePercent / 100;
+  const LOW_LIQUIDITY_THRESHOLD = 2; // warn if balance < 2× payout amount
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       // Fetch fresh account (and sequence number) on every attempt to prevent stale sequences
       const account = await server.loadAccount(keypair.publicKey());
 
+      // Check USDC balance to decide between direct payment and path payment
+      const usdcBal = account.balances.find(
+        (b: StellarBalance) =>
+          b.asset_type !== "native" &&
+          b.asset_code === USDC.getCode() &&
+          b.asset_issuer === USDC.getIssuer()
+      );
+      const balance = parseFloat(usdcBal?.balance ?? "0");
+      const amountNum = parseFloat(amount);
+
+      if (balance < amountNum * LOW_LIQUIDITY_THRESHOLD) {
+        logger.warn(
+          { balance, amount, threshold: amountNum * LOW_LIQUIDITY_THRESHOLD },
+          "[stellar] Low USDC liquidity on server account"
+        );
+      }
+
+      let operation: ReturnType<typeof Operation.payment> | ReturnType<typeof Operation.pathPaymentStrictSend>;
+
+      if (balance >= amountNum) {
+        // Sufficient balance — direct USDC payment
+        operation = Operation.payment({ destination, asset: USDC, amount });
+      } else {
+        // Insufficient balance — path payment: XLM → USDC via DEX
+        const destMin = (amountNum * (1 - slippage)).toFixed(7);
+        logger.warn(
+          { balance, amount, destMin, slippage },
+          "[stellar] Insufficient USDC; falling back to pathPaymentStrictSend"
+        );
+        operation = Operation.pathPaymentStrictSend({
+          sendAsset: Asset.native(),
+          sendAmount: amount, // XLM amount to spend (caller controls this)
+          destination,
+          destAsset: USDC,
+          destMin,
+          path: [],
+        });
+      }
+
       const tx = new TransactionBuilder(account, { fee: BASE_FEE, networkPassphrase })
-        .addOperation(Operation.payment({ destination, asset: USDC, amount }))
+        .addOperation(operation)
         .setTimeout(30)
         .build();
 
       tx.sign(keypair);
       const result = await server.submitTransaction(tx);
-      
+
       if (attempt > 1) {
         logger.info({ attempt, destination, hash: result.hash }, "[stellar] sendUsdcPayment succeeded after retry");
       }
-      
+
       return result.hash;
     } catch (err) {
       const retryable = isRetryable(err);
