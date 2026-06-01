@@ -15,7 +15,7 @@ interface Props {
 
 export function MemberPayoutList({ circle, initialMembers, isCreator, currentUserId }: Props) {
   const [members, setMembers] = useState<Member[]>(
-    [...initialMembers].sort((a, b) => a.position - b.position)
+    [...initialMembers].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
   );
   const [shuffling, setShuffling] = useState(false);
   const [error, setError] = useState<string | null>(null);

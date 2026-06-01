@@ -23,7 +23,6 @@ export function JoinCircleForm({ circle, token, inviteValid }: Props) {
   const [noSavedKey, setNoSavedKey] = useState(false);
   const [stellarPublicKey, setStellarPublicKey] = useState("");
   const [optimisticCount, setOptimisticCount] = useState(circle.memberCount ?? 0);
-  const [noSavedKey, setNoSavedKey] = useState(false);
   const [hasUsdcTrustline, setHasUsdcTrustline] = useState<boolean | null>(null);
 
   const { connectionState, publicKey, error: walletError, connect, disconnect } = useFreighterWallet();
@@ -88,7 +87,7 @@ export function JoinCircleForm({ circle, token, inviteValid }: Props) {
 
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
-      try { (await import('@vercel/analytics')).event('circle_joined', { circleId: circle.id }); } catch {}
+      try { (await import('@vercel/analytics')).track('circle_joined', { circleId: circle.id }); } catch {}
 
       router.push(`/circles/${circle.id}?joined=true`);
       router.refresh();
