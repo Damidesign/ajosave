@@ -1,4 +1,5 @@
 import { SupportedCurrency } from "@/lib/currency";
+export type { SupportedCurrency };
 
 // ─── User ─────────────────────────────────────────────────────────────────────
 export type UserRole = "user" | "admin";
@@ -109,3 +110,38 @@ export interface ApiError {
   code?: string;
 }
 export type ApiResponse<T> = ApiSuccess<T> | ApiError;
+
+// ─── Dispute ──────────────────────────────────────────────────────────────────
+export interface Dispute {
+  id: string;
+  contributionId: string;
+  memberId: string;
+  circleId: string;
+  paystackReference?: string;
+  reason: string;
+  status: "open" | "resolved" | "rejected";
+  resolutionNotes?: string;
+  resolvedBy?: string;
+  createdAt: Date;
+  resolvedAt?: Date;
+}
+
+// ─── Referral ─────────────────────────────────────────────────────────────────
+export interface Referral {
+  id: string;
+  referrerId: string;
+  referredUserId: string;
+  code: string;
+  createdAt: Date;
+}
+
+// ─── Reputation ───────────────────────────────────────────────────────────────
+export interface ReputationScore {
+  userId: string;
+  score: number;
+  level: string;
+  onTimeContributions: number;
+  circlesCompleted: number;
+  defaults: number;
+  updatedAt: Date;
+}
