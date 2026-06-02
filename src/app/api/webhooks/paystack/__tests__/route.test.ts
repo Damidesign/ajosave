@@ -91,4 +91,16 @@ describe("POST /api/webhooks/paystack", () => {
     expect(json.duplicate).toBe(true);
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
+
+  it("marks contribution as failed on charge.failed", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 } as any);
+
+    const req = makeRequest({ event: "charge.failed", data: { reference: "ajo-circle-1-member-1-2" } });
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.stringContaining("status = 'failed'"),
+      ["ajo-circle-1-member-1-2"]
+    );
+  });
 });

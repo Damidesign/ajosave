@@ -24,6 +24,19 @@ export async function POST(req: NextRequest) {
 
   const event = JSON.parse(rawBody);
 
+  if (event.event === "charge.failed") {
+    const reference: string = event.data?.reference;
+    if (!reference) {
+      return NextResponse.json({ error: "Missing reference" }, { status: 400 });
+    }
+    await query(
+      `UPDATE contributions SET status = 'failed'
+       WHERE paystack_reference = $1 AND status = 'pending'`,
+      [reference]
+    );
+    return NextResponse.json({ received: true });
+  }
+
   if (event.event !== "charge.success") {
     return NextResponse.json({ received: true });
   }
