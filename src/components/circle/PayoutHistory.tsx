@@ -5,7 +5,9 @@ import type { PayoutHistoryRow } from "@/server/services/payout.service";
 import { format } from "date-fns";
 import styles from "./PayoutHistory.module.css";
 
-const STELLAR_EXPLORER = "https://stellar.expert/explorer/testnet/tx";
+const explorerNetwork =
+  process.env.NEXT_PUBLIC_STELLAR_NETWORK === "mainnet" ? "mainnet" : "testnet";
+const STELLAR_EXPLORER = `https://stellar.expert/explorer/${explorerNetwork}/tx`;
 
 interface Props {
   circleId: string;

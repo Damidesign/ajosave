@@ -296,16 +296,24 @@ export async function toggleSmsNotifications(
 }
 
 /**
- * Toggle Email notifications for a user
+ * Notify circle creator (admin) that a member defaulted and a penalty was recorded.
  */
-export async function toggleEmailNotifications(
-  userId: string,
-  enabled: boolean
+export async function notifyAdminOfDefault(
+  adminUserId: string,
+  defaulterUserId: string,
+  circleName: string,
+  penaltyAmount: string
 ): Promise<void> {
-  await query(
-    "UPDATE users SET email_notifications_enabled = $1 WHERE id = $2",
-    [enabled, userId]
-  );
+  if (!(await canSendSms(adminUserId))) return;
+  const phone = await getUserPhone(adminUserId);
+  if (!phone) return;
+
+  try {
+    const message = `Ajosave: A member defaulted in "${circleName}". Penalty of ${penaltyAmount} USDC recorded.`;
+    await sendSms(phone, message);
+  } catch (error) {
+    console.error(`Failed to notify admin ${adminUserId} about default:`, error);
+  }
 }
 
 /**

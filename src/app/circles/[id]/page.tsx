@@ -16,6 +16,7 @@ import { format } from "date-fns";
 import type { Metadata } from "next";
 import { LazyCircleChat } from "@/components/circle/LazyCircleChat";
 import { CircleWaitlist } from "@/components/circle/CircleWaitlist";
+import { CircleCompletionScreen } from "@/components/circle/CircleCompletionScreen";
 import styles from "./page.module.css";
 
 interface Props {
@@ -76,6 +77,16 @@ export default async function CircleDetailPage({ params }: Props) {
     const status = await getWaitlistStatus(circle.id, userId);
     isOnWaitlist = status.isOnWaitlist;
     waitlistPosition = status.position;
+  }
+
+  if (circle.status === "completed") {
+    return (
+      <div className={styles.page}>
+        <div className="container">
+          <CircleCompletionScreen circle={circle} members={members} />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -162,6 +173,26 @@ export default async function CircleDetailPage({ params }: Props) {
 
         {userId && (
           <LazyCircleChat circleId={circle.id} isActiveMember={isActiveMember} currentUserId={userId} />
+        )}
+
+        {isActiveMember && circle.status === "active" && (
+          <div className="card" style={{ marginTop: "var(--space-6)" }}>
+            <h2 className={styles.sectionTitle}>Raise a Dispute</h2>
+            <DisputeForm
+              circleId={circle.id}
+              memberId={members.find((m) => m.userId === userId)?.id ?? ""}
+            />
+          </div>
+        )}
+
+        {isActiveMember && circle.status === "active" && circle.creatorId !== userId && (
+          <div className="card" style={{ marginTop: "var(--space-6)" }}>
+            <h2 className={styles.sectionTitle}>Early Exit</h2>
+            <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-secondary)", marginBottom: "var(--space-4)" }}>
+              You may request to exit this circle early. A penalty will be applied to your contributions.
+            </p>
+            <EarlyExitButton circleId={circle.id} />
+          </div>
         )}
       </div>
     </div>
