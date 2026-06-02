@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { getCircleById, getMembersByCircle } from "@/server/services/circle.service";
 import { initializePayment } from "@/lib/paystack";
 import { serverConfig } from "@/server/config";
-import { withErrorHandler } from "@/server/middleware";
+import { withErrorHandler, withIdempotency, withRateLimit } from "@/server/middleware";
 import { query } from "@/lib/db";
 import { randomUUID } from "crypto";
 import { z } from "zod";
@@ -120,4 +120,4 @@ export const POST = withErrorHandler(async (req: NextRequest, ctx: unknown) => {
     success: true,
     data: { authorizationUrl, reference, isPartial, remainingUsdc: circle.contributionUsdc },
   });
-});
+})));
