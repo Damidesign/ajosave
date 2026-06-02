@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import * as vercelAnalytics from "@vercel/analytics";
 import { useToast } from "@/components/ui/Toast";
@@ -18,10 +18,13 @@ export function ContributeButton({ circleId, circleName, amountNgn, cycleFrequen
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [feeInfo, setFeeInfo] = useState<{ authorizationUrl: string; platformFee: number } | null>(null);
+  const [networkFee, setNetworkFee] = useState<{ baseFee: number; priorityFee: number; maxFeeCap: number } | null>(null);
+  const [feeError, setFeeError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  // Stellar network fee estimate (fixed low fee)
-  const feeEstimate = "~0.00001 XLM";
+  const feeEstimate = networkFee
+    ? `${networkFee.priorityFee} stroops (${(networkFee.priorityFee / 1e7).toFixed(7)} XLM)`
+    : "Fetching current Stellar fee…";
 
   const handleConfirm = async () => {
     setLoading(true);
@@ -71,6 +74,32 @@ export function ContributeButton({ circleId, circleName, amountNgn, cycleFrequen
     );
   }
 
+  useEffect(() => {
+    if (!showModal || networkFee || feeError) return;
+
+    let isMounted = true;
+    fetch("/api/stellar/fee")
+      .then((res) => res.json())
+      .then((json) => {
+        if (!isMounted) return;
+        if (json.success) {
+          setNetworkFee(json.data);
+          setFeeError(null);
+        } else {
+          throw new Error(json.error || "Unable to load network fee");
+        }
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        setFeeError("Unable to fetch current Stellar fee. Using a conservative estimate.");
+        console.warn("[ContributeButton] fee fetch failed:", err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [showModal, networkFee, feeError]);
+
   return (
     <>
       <Button variant="accent" onClick={() => setShowModal(true)}>
@@ -97,7 +126,20 @@ export function ContributeButton({ circleId, circleName, amountNgn, cycleFrequen
               </div>
               <div className={styles.row}>
                 <dt>Network Fee</dt>
-                <dd>{feeEstimate}</dd>
+                <dd>
+                  {networkFee ? (
+                    <>
+                      {networkFee.priorityFee} stroops ({(networkFee.priorityFee / 1e7).toFixed(7)} XLM)
+                      <span style={{ display: "block", color: "var(--color-text-muted)", fontSize: "0.8rem" }}>
+                        Current base fee {networkFee.baseFee} stroops; capped at {networkFee.maxFeeCap} stroops.
+                      </span>
+                    </>
+                  ) : feeError ? (
+                    feeError
+                  ) : (
+                    feeEstimate
+                  )}
+                </dd>
               </div>
             </dl>
 

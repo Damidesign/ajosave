@@ -120,6 +120,10 @@ describe("POST /api/webhooks/paystack", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.duplicate).toBe(true);
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.stringContaining("INTERVAL '24 HOURS'"),
+      ["evt_123"]
+    );
     expect(mockQuery).toHaveBeenCalledTimes(1);
     expect(mockTransaction).not.toHaveBeenCalled();
   });
