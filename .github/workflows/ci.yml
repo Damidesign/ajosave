@@ -344,3 +344,35 @@ jobs:
           name: contract-deploy-artifacts
           path: deploy-artifacts/
           retention-days: 30
+
+  generate-abi-bindings:
+    name: Generate & Publish ABI Bindings
+    runs-on: ubuntu-latest
+    needs: [contract-test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: wasm32-unknown-unknown }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: contracts }
+      - name: Install Stellar CLI
+        run: |
+          curl -sSL https://github.com/stellar/stellar-cli/releases/latest/download/stellar-cli-x86_64-unknown-linux-gnu.tar.gz \
+            | tar -xz -C /usr/local/bin
+      - name: Build contract WASM
+        working-directory: contracts
+        run: cargo build --target wasm32-unknown-unknown --release
+      - name: Generate TypeScript bindings
+        run: |
+          stellar contract bindings typescript \
+            --wasm contracts/target/wasm32-unknown-unknown/release/ajosave_ajo.wasm \
+            --contract-id CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC \
+            --network testnet \
+            --output-dir contracts/ajo/bindings
+      - name: Upload bindings as CI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ajo-abi-bindings
+          path: contracts/ajo/bindings/
+          retention-days: 90
