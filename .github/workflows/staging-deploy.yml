@@ -1,0 +1,99 @@
+name: Staging Deploy
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+concurrency:
+  group: staging-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # Gate: allow at most 5 concurrent staging environments by checking active deployments
+  deploy:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Check concurrent staging environment cap (max 5)
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          count=$(vercel list \
+            --token "$VERCEL_TOKEN" \
+            --json 2>/dev/null \
+            | jq '[.[].meta.prNumber | select(. != null)] | unique | length')
+          echo "Active staging environments: $count"
+          if [ "$count" -ge 5 ]; then
+            echo "::error::Maximum of 5 concurrent staging environments reached. Close another PR first."
+            exit 1
+          fi
+
+      - name: Deploy to Vercel (staging preview)
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          url=$(vercel deploy \
+            --token "$VERCEL_TOKEN" \
+            --env DATABASE_URL="${{ secrets.STAGING_DATABASE_URL }}" \
+            --env NEXTAUTH_SECRET="${{ secrets.NEXTAUTH_SECRET }}" \
+            --env NEXTAUTH_URL="https://ajosave-pr-${{ github.event.pull_request.number }}.vercel.app" \
+            --env STELLAR_SERVER_SECRET_KEY="${{ secrets.STELLAR_SERVER_SECRET_KEY }}" \
+            --meta prNumber="${{ github.event.pull_request.number }}" \
+            --yes \
+            2>/dev/null)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Post preview URL as PR comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ## 🚀 Staging Preview Deployed
+
+            | | |
+            |---|---|
+            | **Preview URL** | ${{ steps.deploy.outputs.url }} |
+            | **PR** | #${{ github.event.pull_request.number }} |
+            | **Commit** | ${{ github.sha }} |
+
+            > Uses staging database. Torn down automatically on PR close.
+          comment-author: github-actions[bot]
+          edit-mode: replace
+
+  teardown:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Remove Vercel preview deployments for this PR
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          deployments=$(vercel list \
+            --token "$VERCEL_TOKEN" \
+            --meta prNumber="${{ github.event.pull_request.number }}" \
+            --json 2>/dev/null | jq -r '.[].uid')
+          for uid in $deployments; do
+            vercel remove "$uid" --token "$VERCEL_TOKEN" --yes || true
+          done
