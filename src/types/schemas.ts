@@ -9,14 +9,19 @@ export const createCircleSchema = z.object({
   contributionCurrency: z.enum(["NGN", "GBP", "USD", "EUR"], {
     errorMap: () => ({ message: "Currency must be NGN, GBP, USD, or EUR" }),
   }),
-  maxMembers: z.number().min(2, "Minimum 2 members").max(20, "Maximum 20 members"),
+  maxMembers: z.number().int().min(2, "Minimum 2 members").max(20, "Maximum 20 members"),
   cycleFrequency: z.enum(["weekly", "biweekly", "monthly"]),
+  circleType: z.enum(["public", "private"]).default("public"),
+  gracePeriodHours: z.number().int().min(0).max(168).default(24),
   payoutMethod: z.enum(["fixed", "randomized"]).default("fixed"),
+  yieldStrategy: z.enum(["none", "blend"]).default("none"),
+  penaltyPercent: z.number().int().min(0).max(100).default(10),
 });
 
 export const joinCircleSchema = z.object({
   circleId: z.string().uuid(),
   stellarPublicKey: z.string().length(56, "Invalid Stellar public key"),
+  token: z.string().optional(),
 });
 
 export const verifyOtpSchema = z.object({
@@ -32,8 +37,13 @@ export const smsPreferencesSchema = z.object({
   enabled: z.boolean({ invalid_type_error: "enabled must be a boolean" }),
 });
 
+export const horizonStreamSchema = z.object({
+  action: z.enum(["start", "stop"]),
+});
+
 export type CreateCircleInput = z.infer<typeof createCircleSchema>;
 export type JoinCircleInput = z.infer<typeof joinCircleSchema>;
 export type VerifyOtpInput = z.infer<typeof verifyOtpSchema>;
 export type SendOtpInput = z.infer<typeof sendOtpSchema>;
 export type SmsPreferencesInput = z.infer<typeof smsPreferencesSchema>;
+export type HorizonStreamInput = z.infer<typeof horizonStreamSchema>;
